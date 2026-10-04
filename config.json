@@ -1,6 +1,33 @@
+
 {
-  "webhook_url": "https://discord.com/api/webhooks/1479078904269373461/lcoK2rYkyPdN6DARypzRuJp3HDhz5LgAtq5dhiMchTr7VahEMY1fND2Os93c7gLHTi5k",
-  "bot_enabled": true,
-  "max_concurrent_users": 100,
-  "captcha_channel_id": "1488093676604227685"
+  "channelIds": {
+    "genChannelId": "1555427957210619964",
+    "boosterChannelId": "1556279226129448971",
+    "vipChannelId": "1556279704875565206",
+    "vouchChannelId": "1556279907838074970",
+    "logsChannelId": "1556280089715413012",
+    "genBansChannelId": "1556280037060124682",
+    "restockChannelId": "1556280198045900820"
+  },
+  "emojis": {
+    "ice_cube": "<a:Lily_icecream:1536718915495788545>",
+    "globe": "<a:HS_Globe:1546144026506563634>",
+    "gold": "<:gold:1532448330037067937>",
+    "booster": "<a:booster:1546232039953530921>",
+    "paid": "<a:paid:1428720677707321544>",
+    "services_48px": "<:services_48px:1428720791863951412>",
+    "_add": "<:_add:1428721107795574875>",
+    "delete": "<:delete:YOUR_ID>",
+    "upload": "<a:upload:1428673194155442196>",
+    "stock": "<a:stock:1428618735035613205>",
+    "restock": "<:restock:1428727418524274781>",
+    "cooldown": "<a:timer:1428721474138669117>",
+    "Moderation": "<:moderation:1428721608087834806>",
+    "ban_hammer": "<a:BAN:1428322215547506710>",
+    "timer": "<a:timer:1428721474138669117>",
+    "unlock_s": "<:unban:1428726872824479837>",
+    "stop_sign": "<a:stop_sign_gif:1428721707211948114>",
+    "books": "<a:Books_:1428721941631467605>",
+    "search": "<a:search:1428722045184905387>"
+  }
 }

@@ -1,0 +1,20 @@
+{
+  "name": "flarecloud-bot",
+  "version": "1.0.0",
+  "description": "FlareCloud Generator Bot",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@types/node": "^22.19.3",
+    "discord.js": "^14.25.1",
+    "fs-extra": "^11.3.2",
+    "install": "^0.13.0",
+    "node-fetch": "^3.3.2",
+    "npm": "^11.7.0"
+  }
+}
