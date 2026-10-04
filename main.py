@@ -35,7 +35,8 @@ from automation.captcha import download_captcha
 import tempmail
 
 # ==================== CONFIGURATION ====================
-ADMIN_IDS = 1350376694141419581
+ADMIN_IDS = 1398979148063571989
+AUTHORIZED_ROLE_ID = 1555427801065193503
 CONFIG_FILE = "config.json"
 AUTHORIZED_USERS_FILE = "authorized_users.json"
 ACTIVE_SESSIONS_FILE = "active_sessions.json"
@@ -104,9 +105,22 @@ class BotDataManager:
     def save_stats(self):
         self.save_json(STATS_FILE, self.stats)
 
-    def is_authorized(self, user_id):
-        return str(user_id) in self.authorized_users and self.authorized_users[
-            str(user_id)]["authorized"]
+    def is_authorized(self, user_id, member=None):
+        # Admin always authorized
+        if user_id == ADMIN_IDS or str(user_id) == str(ADMIN_IDS):
+            return True
+        # Check authorized users list
+        if str(user_id) in self.authorized_users and self.authorized_users[str(user_id)].get("authorized"):
+            return True
+        # Check authorized role
+        if member is not None:
+            try:
+                role_ids = [r.id for r in getattr(member, "roles", [])]
+                if AUTHORIZED_ROLE_ID in role_ids:
+                    return True
+            except Exception:
+                pass
+        return False
 
     def authorize_user(self, user_id, by_admin, expires_at=None):
         self.authorized_users[str(user_id)] = {
@@ -917,7 +931,7 @@ print(f"{'='*70}\n")
 def check_auth():
 
     async def predicate(interaction: discord.Interaction) -> bool:
-        if not data_manager.is_authorized(interaction.user.id):
+        if not data_manager.is_authorized(interaction.user.id, interaction.user):
             await interaction.response.send_message(embed=create_embed(
                 "❌ Not Authorized", f"Contact Admins (ID: `{ADMIN_IDS}`).",
                 COLOR_ERROR),
@@ -948,7 +962,7 @@ def check_login():
 @bot.tree.command(name="help",
                   description="View all commands and how to use the bot")
 async def help_command(interaction: discord.Interaction):
-    if not data_manager.is_authorized(interaction.user.id):
+    if not data_manager.is_authorized(interaction.user.id, interaction.user):
         await interaction.response.send_message(embed=create_embed(
             "<a:Wrong:1466073421275201661> Not Authorized", f"Contact admin (ID: `{ADMIN_IDS}`).",
             COLOR_ERROR),
