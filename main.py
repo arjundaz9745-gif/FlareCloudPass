@@ -936,12 +936,12 @@ async def on_ready():
         print(f"❌ Error syncing commands: {e}")
 
     await bot.change_presence(
-    status=discord.Status.dnd,
-    activity=discord.Activity(
-        type=discord.ActivityType.watching,
-        name="Changing Passwords | made by FlareCloud"
+        status=discord.Status.online,
+        activity=discord.Activity(
+            type=discord.ActivityType.watching,
+            name="FlareCloud"
+        )
     )
-)
 
 print(f"\n{'='*70}")
 print(f"Bot is ready! Use /help in Discord to see commands.")
@@ -953,13 +953,28 @@ print(f"{'='*70}\n")
 def check_auth():
 
     async def predicate(interaction: discord.Interaction) -> bool:
-        if not data_manager.is_authorized(interaction.user.id, interaction.user):
-            await interaction.response.send_message(embed=create_embed(
-                "❌ Not Authorized", f"Contact Admins (ID: `{ADMIN_IDS}`).",
-                COLOR_ERROR),
-                                                    ephemeral=True)
+        try:
+            member = interaction.member or interaction.user
+            if not data_manager.is_authorized(interaction.user.id, member):
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(
+                        embed=create_embed(
+                            "❌ Not Authorized",
+                            f"Contact Admins (ID: `{ADMIN_IDS}`).",
+                            COLOR_ERROR),
+                        ephemeral=True)
+                return False
+            return True
+        except Exception as err:
+            print(f"check_auth error: {err}")
+            traceback.print_exc()
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(
+                        "Auth check failed. Try again.", ephemeral=True)
+            except Exception:
+                pass
             return False
-        return True
 
     return app_commands.check(predicate)
 
@@ -967,24 +982,59 @@ def check_auth():
 def check_login():
 
     async def predicate(interaction: discord.Interaction) -> bool:
-        if not data_manager.is_authenticated(interaction.user.id):
-            await interaction.response.send_message(embed=create_embed(
-                f"{e('Wrong', '<a:Wrong:1466073421275201661>')} Not Logged In",
-                "Use `/request_otp` and `/verify_otp` first.", COLOR_ERROR),
-                                                    ephemeral=True)
+        try:
+            if not data_manager.is_authenticated(interaction.user.id):
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(
+                        embed=create_embed(
+                            f"{e('Wrong', '<a:Wrong:1466073421275201661>')} Not Logged In",
+                            "Use `/request_otp` and `/verify_otp` first.",
+                            COLOR_ERROR),
+                        ephemeral=True)
+                return False
+            return True
+        except Exception as err:
+            print(f"check_login error: {err}")
+            traceback.print_exc()
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message(
+                        "Login check failed. Try `/request_otp` again.",
+                        ephemeral=True)
+            except Exception:
+                pass
             return False
-        return True
 
     return app_commands.check(predicate)
 
 
 # COMMANDS
 
+@bot.tree.error
+async def on_app_command_error(interaction: discord.Interaction,
+                               error: app_commands.AppCommandError):
+    """Always reply so Discord never shows 'Application did not respond'."""
+    print(f"Slash command error: {error}")
+    traceback.print_exc()
+    msg = "Something went wrong. Please try again."
+    if isinstance(error, app_commands.CheckFailure):
+        # check already responded in most cases
+        msg = "You can't use this command."
+    try:
+        if interaction.response.is_done():
+            await interaction.followup.send(msg, ephemeral=True)
+        else:
+            await interaction.response.send_message(msg, ephemeral=True)
+    except Exception as e:
+        print(f"Failed to send error response: {e}")
+
+
+
 
 @bot.tree.command(name="help",
                   description="View all commands and how to use the bot")
 async def help_command(interaction: discord.Interaction):
-    if not data_manager.is_authorized(interaction.user.id, interaction.user):
+    if not data_manager.is_authorized(interaction.user.id, interaction.member or interaction.user):
         await interaction.response.send_message(embed=create_embed(
             f"{e('Wrong', '<a:Wrong:1466073421275201661>')} Not Authorized", f"Contact admin (ID: `{ADMIN_IDS}`).",
             COLOR_ERROR),
@@ -1041,28 +1091,36 @@ async def request_otp(interaction: discord.Interaction):
 
     if data_manager.is_authenticated(user_id):
         await interaction.response.send_message(embed=create_embed(
-            f"ℹ{e('info', '<:info:1469728865554534671>')} Already Logged In", "You are already authenticated.",
+            "Already Authenticated",
+            "You are already logged in. Use `/logout` first if needed.",
             COLOR_INFO),
                                                 ephemeral=True)
         return
 
     otp = data_manager.generate_otp(user_id)
 
+    # Respond to Discord FIRST (must be within 3 seconds)
+    await interaction.response.send_message(embed=create_embed(
+        "OTP Sent",
+        "Check your **DMs** for the 6-digit code.\nThen use `/verify_otp`.",
+        COLOR_SUCCESS),
+                                            ephemeral=True)
+
+    # DM after acknowledging the interaction
     try:
         dm_embed = create_embed(
-            f"{e('password', '<:password:1469702059904467057>')} Your One-Time Password (OTP)",
-            f"Your OTP is: **`{otp}`**\n\nThis code expires in **5 minutes**.\nUse `/verify_otp {otp}` in the server.",
-            COLOR_WARNING)
+            "Your OTP Code",
+            f"**Code:** `{otp}`\nExpires in **5 minutes**.\nDo not share this code.",
+            COLOR_PRIMARY)
         await interaction.user.send(embed=dm_embed)
-
-        await interaction.response.send_message(embed=create_embed(
-            f"{e('tick', '<a:tick:1454372387511472313>')} OTP Sent", "Check your direct messages for the code.",
-            COLOR_SUCCESS),
-                                                ephemeral=True)
-    except discord.Forbidden:
-        await interaction.response.send_message(embed=create_embed(
-            f"{e('Wrong', '<a:Wrong:1466073421275201661>')} DM Failed", "Enable DMs from server members.", COLOR_ERROR),
-                                                ephemeral=True)
+    except Exception:
+        await interaction.followup.send(
+            embed=create_embed(
+                "Could not DM you",
+                "Enable **Allow direct messages from server members**, then run `/request_otp` again.\n"
+                f"Your code (ephemeral): `{otp}`",
+                COLOR_WARNING),
+            ephemeral=True)
 
 
 @bot.tree.command(name="verify_otp", description="Verify the OTP to log in")
@@ -1138,9 +1196,10 @@ async def process_account(interaction: discord.Interaction,
                                                 ephemeral=True)
         return
 
+    # Reply immediately so Discord does not time out
     await interaction.response.send_message(embed=create_embed(
         "🚀 Starting Process",
-        f"Attempting to recover: `{email}`\n**Target Password:** `{final_newpass}`\n\nUpdates will be posted in this channel/DM.",
+        f"Attempting to recover: `{email}`\n**Target Password:** `{final_newpass}`\n\nUpdates will be posted in this channel.",
         COLOR_INFO))
 
     asyncio.create_task(
