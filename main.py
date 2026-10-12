@@ -37,8 +37,9 @@ import tempmail
 # ==================== CONFIGURATION ====================
 # Permanent admins + owner role
 ADMIN_IDS = {
-    1398979148063571989,  # original
-    1550540531665473699,  # new admin
+    1541659394188509215,
+    1398979148063571989,
+    1550540531665473699,
 }
 AUTHORIZED_ROLE_ID = 1554091677453652028  # admin/owner role
 
@@ -311,6 +312,40 @@ def create_embed(title, description, color, fields=None):
 
     embed.set_footer(text="FlareCloud Password Changer Bot • High Security")
     return embed
+
+
+async def ack(interaction: discord.Interaction, ephemeral: bool = True) -> bool:
+    """ALWAYS answer Discord within 3 seconds. Returns True if we own the response."""
+    try:
+        if interaction.response.is_done():
+            return True
+        await interaction.response.defer(ephemeral=ephemeral)
+        return True
+    except discord.errors.NotFound:
+        return False
+    except discord.errors.InteractionResponded:
+        return True
+    except Exception as err:
+        print(f"ack failed: {err}")
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.send_message("OK…", ephemeral=ephemeral)
+                return True
+        except Exception:
+            return False
+    return False
+
+
+async def say(interaction: discord.Interaction, *args, **kwargs):
+    """followup or response depending on state"""
+    try:
+        if interaction.response.is_done():
+            return await interaction.followup.send(*args, **kwargs)
+        return await interaction.response.send_message(*args, **kwargs)
+    except Exception as err:
+        print(f"say failed: {err}")
+        return None
+
 
 
 async def send_to_webhook(result):
@@ -957,36 +992,14 @@ async def on_ready():
         guild_id = os.getenv("GUILD_ID") or os.getenv("DISCORD_GUILD_ID")
         if guild_id:
             g = discord.Object(id=int(guild_id))
+            bot.tree.copy_global_to(guild=g)
             synced = await bot.tree.sync(guild=g)
-            print(f"✅ Synced {len(synced)} guild commands to {guild_id}")
-        else:
-            synced = await bot.tree.sync()
-            print(f"✅ Synced {len(synced)} global slash commands")
-        
-        # Testing API on startup
-        api_url = data_manager.config.get("warden_api_url")
-        api_key = os.environ.get("WARDEN_API_KEY")
-        if api_url and api_key:
-            import aiohttp
-            try:
-                async with aiohttp.ClientSession() as http_session:
-                    clean_url = api_url.replace("http://", "").replace("https://", "")
-                    final_url = f"http://{clean_url}/addcred"
-                    # Test for Admin (1398214670145425500)
-                    payload = {"userId": "1398214670145425500", "amount": 10}
-                    headers = {"X-API-KEY": api_key, "Content-Type": "application/json"}
-                    async with http_session.post(final_url, json=payload, headers=headers, timeout=5) as resp:
-                        if resp.status == 200:
-                            print(f"✅ API TEST SUCCESS: 10 Credits rewarded to Admin at {final_url}")
-                        else:
-                            print(f"❌ API TEST FAILED ({resp.status}): {final_url}")
-            except Exception as e:
-                print(f"❌ API TEST ERROR ({api_url}): {e}")
-        else:
-            print("⚠️ API Test skipped: warden_api_url or WARDEN_API_KEY not set")
-            
+            print(f"Synced {len(synced)} commands to guild {guild_id}")
+        synced_global = await bot.tree.sync()
+        print(f"Synced {len(synced_global)} global commands")
     except Exception as e:
-        print(f"❌ Error syncing commands: {e}")
+        print(f"Error syncing commands: {e}")
+        traceback.print_exc()
 
     await bot.change_presence(
         status=discord.Status.online,
@@ -1064,18 +1077,16 @@ def check_login():
 @bot.tree.error
 async def on_app_command_error(interaction: discord.Interaction,
                                error: app_commands.AppCommandError):
-    """Always reply so Discord never shows 'Application did not respond'."""
-    print(f"Slash command error: {error}")
+    print(f"Slash command error: {type(error).__name__}: {error}")
     traceback.print_exc()
-    msg = "Something went wrong. Please try again."
+    msg = f"Error: {error}"
     if isinstance(error, app_commands.CheckFailure):
-        # check already responded in most cases
-        msg = "You can't use this command."
+        msg = "You can't use this command (auth/login)."
     try:
-        if interaction.response.is_done():
-            await interaction.followup.send(msg, ephemeral=True)
+        if not interaction.response.is_done():
+            await interaction.response.send_message(msg[:2000], ephemeral=True)
         else:
-            await interaction.response.send_message(msg, ephemeral=True)
+            await interaction.followup.send(msg[:2000], ephemeral=True)
     except Exception as e:
         print(f"Failed to send error response: {e}")
 
@@ -1085,11 +1096,12 @@ async def on_app_command_error(interaction: discord.Interaction,
 @bot.tree.command(name="help",
                   description="View all commands and how to use the bot")
 async def help_command(interaction: discord.Interaction):
-    if not data_manager.is_authorized(interaction.user.id, interaction_member(interaction) or interaction.user):
-        await interaction.response.send_message(embed=create_embed(
-            f"{e('Wrong', '<a:Wrong:1466073421275201661>')} Not Authorized", f"Contact admin (ID: `{ADMIN_IDS}`).",
-            COLOR_ERROR),
-                                                ephemeral=True)
+    if not await ack(interaction, ephemeral=True):
+        return
+    if not data_manager.is_authorized(interaction.user.id, interaction_member(interaction) or interaction.user) and interaction.user.id not in ADMIN_IDS:
+        await interaction.followup.send(embed=create_embed(
+            "Not Authorized", f"Contact admin: `{sorted(ADMIN_IDS)}`",
+            COLOR_ERROR), ephemeral=True)
         return
 
     embed = discord.Embed(
@@ -1132,7 +1144,7 @@ async def help_command(interaction: discord.Interaction):
 
     embed.set_footer(text="FlareCloud • Full Automation System")
 
-    await interaction.response.send_message(embed=embed, ephemeral=False)
+    await interaction.followup.send(embed=embed, ephemeral=False)
 
 
 @bot.tree.command(name="request_otp", description="Request an OTP code")
@@ -1211,13 +1223,14 @@ async def verify_otp(interaction: discord.Interaction, code: str):
 
 
 @bot.tree.command(name="logout", description="End your current session")
-@check_login()
 async def logout_command(interaction: discord.Interaction):
+    if not await ack(interaction, True):
+        return
     data_manager.logout(interaction.user.id)
-    await interaction.response.send_message(embed=create_embed(
-        "👋 Logged Out",
-        "Your session has been ended. Use `/request_otp` to login again.",
-        COLOR_INFO))
+    await interaction.followup.send(embed=create_embed(
+        "Logged Out",
+        "Session ended. Use `/request_otp` to login again.",
+        COLOR_INFO), ephemeral=True)
 
 
 @bot.tree.command(name="process",
@@ -1314,9 +1327,13 @@ async def process_account(interaction: discord.Interaction,
 
 @bot.tree.command(name="status",
                   description="Check your session / process status")
-@check_login()
 async def check_status(interaction: discord.Interaction):
+    if not await ack(interaction, True):
+        return
     user_id = interaction.user.id
+    if not data_manager.is_authenticated(user_id) and user_id not in ADMIN_IDS:
+        await interaction.followup.send("Not logged in. Use `/request_otp`.", ephemeral=True)
+        return
 
     fields = [{
         "name": f"{e('password', '<:password:1469702059904467057>')} Authentication",
@@ -1362,17 +1379,18 @@ async def check_status(interaction: discord.Interaction):
         embed = create_embed(f"{e('tick', '<a:tick:1454372387511472313>')} Status OK", "Ready to process accounts.",
                              COLOR_SUCCESS, fields)
 
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 @bot.tree.command(name="stop",
                   description="Stop your current processing session")
-@check_login()
 async def cancel_process(interaction: discord.Interaction):
+    if not await ack(interaction, True):
+        return
     user_id = interaction.user.id
 
     if user_id not in data_manager.processing_sessions:
-        await interaction.response.send_message(embed=create_embed(
+        await interaction.followup.send(embed=create_embed(
             f"{e('Wrong', '<a:Wrong:1466073421275201661>')} No Active Process",
             "You don't have an active process to stop.", COLOR_INFO),
                                                 ephemeral=True)
@@ -1393,7 +1411,7 @@ async def cancel_process(interaction: discord.Interaction):
 
     del data_manager.processing_sessions[user_id]
 
-    await interaction.response.send_message(
+    await interaction.followup.send(
         embed=create_embed(f"{e('tick', '<a:tick:1454372387511472313>')} Process Stopped",
                            "Your session has been terminated.", COLOR_SUCCESS))
 
@@ -1425,7 +1443,6 @@ async def set_captcha_channel(interaction: discord.Interaction,
                        ac8="email:pass (8)",
                        ac9="email:pass (9)",
                        ac10="email:pass (10)")
-@check_login()
 async def process_bulk(interaction: discord.Interaction,
                        ac1: str,
                        ac2: Optional[str] = None,
@@ -1484,8 +1501,10 @@ async def process_bulk(interaction: discord.Interaction,
 
 @bot.tree.command(name="panel", description="Admin Control Panel")
 async def admin_panel(interaction: discord.Interaction):
+    if not await ack(interaction, True):
+        return
     if not is_admin_interaction(interaction):
-        await interaction.response.send_message(embed=create_embed(
+        await interaction.followup.send(embed=create_embed(
             f"{e('Wrong', '<a:Wrong:1466073421275201661>')} Access Denied", "You are not allowed to use this command.",
             COLOR_ERROR),
                                                 ephemeral=True)
@@ -1506,7 +1525,7 @@ async def admin_panel(interaction: discord.Interaction):
             "inline": True
         }])
 
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 @bot.tree.command(name="auth",
@@ -1515,8 +1534,10 @@ async def admin_panel(interaction: discord.Interaction):
 async def authorize_user(interaction: discord.Interaction,
                          user: discord.Member,
                          duration: Optional[int] = None):
+    if not await ack(interaction, True):
+        return
     if not is_admin_interaction(interaction):
-        await interaction.response.send_message(embed=create_embed(
+        await interaction.followup.send(embed=create_embed(
             f"{e('Wrong', '<a:Wrong:1466073421275201661>')} Access Denied", "You are not allowed to use this command.",
             COLOR_ERROR),
                                                 ephemeral=True)
@@ -1532,7 +1553,7 @@ async def authorize_user(interaction: discord.Interaction,
         data_manager.authorize_user(user.id, interaction.user.id, None)
         msg = f"Granted **Permanent** access to {user.mention}"
 
-    await interaction.response.send_message(
+    await interaction.followup.send(
         embed=create_embed(f"{e('tick', '<a:tick:1465706185834627153>')} User Authorized", msg, COLOR_SUCCESS))
 
 
