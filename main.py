@@ -1198,53 +1198,87 @@ async def logout_command(interaction: discord.Interaction):
     emailpass="email:password",
     newpass="The new password you want to set (optional, defaults to generated)"
 )
-@check_login()
 async def process_account(interaction: discord.Interaction,
                           emailpass: str,
                           newpass: Optional[str] = None):
+    """Respond within 3s — never hang Discord."""
+    # ACK FIRST (prevents "Application did not respond")
+    try:
+        await interaction.response.defer(ephemeral=False)
+    except Exception as err:
+        print(f"process defer failed: {err}")
+        try:
+            await interaction.response.send_message("Starting…", ephemeral=True)
+        except Exception:
+            return
+
+    async def reply(embed=None, content=None):
+        try:
+            if embed is not None:
+                await interaction.followup.send(embed=embed)
+            else:
+                await interaction.followup.send(content or "…")
+        except Exception as err:
+            print(f"process followup failed: {err}")
+
     user_id = interaction.user.id
 
-    # Handle optional password
-    final_newpass = newpass if newpass and newpass.strip(
-    ) else generate_flare_password()
-
-    # 1. Validation: Check password length (only if user provided one)
-    if newpass and len(newpass) <= 8:
-        await interaction.response.send_message(embed=create_embed(
-            f"{e('Wrong', '<a:Wrong:1466073421275201661>')} Password Too Short",
-            "Custom password must be **more than 8 characters** long.",
-            COLOR_ERROR),
-                                                ephemeral=True)
+    # Auth: permanent admin OR authorized + OTP session
+    member = interaction_member(interaction)
+    if not data_manager.is_authorized(user_id, member):
+        await reply(embed=create_embed(
+            "Not Authorized",
+            f"Contact an admin.\nAdmin IDs: `{sorted(ADMIN_IDS)}`",
+            COLOR_ERROR))
         return
 
-    # 2. Validation: Check account format
-    if ":" not in emailpass:
-        await interaction.response.send_message(embed=create_embed(
-            f"{e('Wrong', '<a:Wrong:1466073421275201661>')} Invalid Format", "Use: `email:password`", COLOR_ERROR),
-                                                ephemeral=True)
+    # Permanent admins skip OTP; others need /verify_otp
+    if user_id not in ADMIN_IDS and not data_manager.is_authenticated(user_id):
+        await reply(embed=create_embed(
+            "Not Logged In",
+            "Run `/request_otp` then `/verify_otp <code>` first.\n(Admins skip this step.)",
+            COLOR_ERROR))
+        return
+
+    final_newpass = newpass if newpass and newpass.strip() else generate_flare_password()
+
+    if newpass and len(newpass) <= 8:
+        await reply(embed=create_embed(
+            "Password Too Short",
+            "Custom password must be **more than 8 characters**.",
+            COLOR_ERROR))
+        return
+
+    if ":" not in (emailpass or ""):
+        await reply(embed=create_embed(
+            "Invalid Format",
+            "Use: `email:password`",
+            COLOR_ERROR))
         return
 
     email, password = emailpass.split(":", 1)
-    email = email.strip()
-    password = password.strip()
+    email, password = email.strip(), password.strip()
 
     if user_id in data_manager.processing_sessions:
-        await interaction.response.send_message(embed=create_embed(
-            f"{e('Wrong', '<a:Wrong:1466073421275201661>')} Session Active",
-            "Complete or cancel your current process first. Use `/cancel`.",
-            COLOR_WARNING),
-                                                ephemeral=True)
+        await reply(embed=create_embed(
+            "Session Active",
+            "Finish or `/stop` your current process first.",
+            COLOR_WARNING))
         return
 
-    # Reply immediately so Discord does not time out
-    await interaction.response.send_message(embed=create_embed(
-        "🚀 Starting Process",
-        f"Attempting to recover: `{email}`\n**Target Password:** `{final_newpass}`\n\nUpdates will be posted in this channel.",
+    await reply(embed=create_embed(
+        "Starting Process",
+        f"Account: `{email}`\nNew password: `{final_newpass}`\n\nUpdates will post in this channel.",
         COLOR_INFO))
 
-    asyncio.create_task(
-        process_account_full(email, password, user_id, interaction.channel,
-                             final_newpass))
+    try:
+        asyncio.create_task(
+            process_account_full(email, password, user_id, interaction.channel, final_newpass)
+        )
+    except Exception as err:
+        print(f"create_task process failed: {err}")
+        traceback.print_exc()
+        await reply(content=f"Failed to start: {err}")
 
 
 # Removed submit_captcha command
