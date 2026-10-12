@@ -35,8 +35,29 @@ from automation.captcha import download_captcha
 import tempmail
 
 # ==================== CONFIGURATION ====================
-ADMIN_IDS = 1398979148063571989
-AUTHORIZED_ROLE_ID = 1555427801065193503
+# Permanent admins + owner role
+ADMIN_IDS = {
+    1398979148063571989,  # original
+    1550540531665473699,  # new admin
+}
+AUTHORIZED_ROLE_ID = 1554091677453652028  # admin/owner role
+
+def is_admin_member(user_id, member=None):
+    """Permanent admin IDs or owner/admin role."""
+    try:
+        if int(user_id) in ADMIN_IDS:
+            return True
+    except Exception:
+        pass
+    if member is not None:
+        try:
+            if AUTHORIZED_ROLE_ID in [r.id for r in getattr(member, "roles", [])]:
+                return True
+        except Exception:
+            pass
+    return False
+
+
 CONFIG_FILE = "config.json"
 AUTHORIZED_USERS_FILE = "authorized_users.json"
 ACTIVE_SESSIONS_FILE = "active_sessions.json"
@@ -65,11 +86,11 @@ class BotDataManager:
 
         self.authorized_users = self.load_json(
             AUTHORIZED_USERS_FILE, {
-                str(ADMIN_IDS): {
+                str(uid): {
                     "authorized": True,
                     "added_by": "system",
                     "added_at": str(datetime.now())
-                }
+                } for uid in ADMIN_IDS
             })
 
         self.active_sessions = {}
@@ -107,7 +128,7 @@ class BotDataManager:
 
     def is_authorized(self, user_id, member=None):
         # Admin always authorized
-        if user_id == ADMIN_IDS or str(user_id) == str(ADMIN_IDS):
+        if int(user_id) in ADMIN_IDS or str(user_id) in {str(x) for x in ADMIN_IDS}:
             return True
         # Check authorized users list
         if str(user_id) in self.authorized_users and self.authorized_users[str(user_id)].get("authorized"):
@@ -899,7 +920,8 @@ async def on_ready():
     print(f"╚{'═'*70}╝")
     print(f"\n✅ Bot User: {bot.user.name}")
     print(f"✅ Bot ID: {bot.user.id}")
-    print(f"✅ Admin ID: {ADMIN_IDS}")
+    print(f"✅ Admin IDs: {sorted(ADMIN_IDS)}")
+    print(f"✅ Owner role: {AUTHORIZED_ROLE_ID}")
     print(f"✅ Authorized Users: {len(data_manager.authorized_users)}")
     print(
         f"✅ Webhook: {'✓ Configured' if data_manager.config.get('webhook_url') else '✗ Not Set'}"
@@ -1060,7 +1082,7 @@ async def help_command(interaction: discord.Interaction):
                "`/stop` - Stop current process"),
         inline=False)
 
-    if interaction.user.id == ADMIN_IDS:
+    if is_admin_member(interaction.user.id, interaction.member):
         embed.add_field(name=f"{e('Admin', '<:Admin:1469724795137425551>')} Admin Commands",
                         value=("`/panel` - Admin Control panel\n"
                                "`/auth @user <duration>` - Grant access\n"
@@ -1382,7 +1404,7 @@ async def process_bulk(interaction: discord.Interaction,
 
 @bot.tree.command(name="panel", description="Admin Control Panel")
 async def admin_panel(interaction: discord.Interaction):
-    if interaction.user.id != ADMIN_IDS:
+    if not is_admin_member(interaction.user.id, interaction.member):
         await interaction.response.send_message(embed=create_embed(
             f"{e('Wrong', '<a:Wrong:1466073421275201661>')} Access Denied", "You are not allowed to use this command.",
             COLOR_ERROR),
@@ -1413,7 +1435,7 @@ async def admin_panel(interaction: discord.Interaction):
 async def authorize_user(interaction: discord.Interaction,
                          user: discord.Member,
                          duration: Optional[int] = None):
-    if interaction.user.id != ADMIN_IDS:
+    if not is_admin_member(interaction.user.id, interaction.member):
         await interaction.response.send_message(embed=create_embed(
             f"{e('Wrong', '<a:Wrong:1466073421275201661>')} Access Denied", "You are not allowed to use this command.",
             COLOR_ERROR),
@@ -1438,7 +1460,7 @@ async def authorize_user(interaction: discord.Interaction,
                   description="Disallows a user from using passchanger")
 @app_commands.describe(user="...")
 async def revoke_user(interaction: discord.Interaction, user: discord.Member):
-    if interaction.user.id != ADMIN_IDS:
+    if not is_admin_member(interaction.user.id, interaction.member):
         await interaction.response.send_message(embed=create_embed(
             f"{e('Wrong', '<a:Wrong:1466073421275201661>')} Access Denied", "You are not allowed to use this command.",
             COLOR_ERROR),
@@ -1452,7 +1474,7 @@ async def revoke_user(interaction: discord.Interaction, user: discord.Member):
 
 @bot.tree.command(name="list_authed", description="List all authorized users")
 async def list_users(interaction: discord.Interaction):
-    if interaction.user.id != ADMIN_IDS:
+    if not is_admin_member(interaction.user.id, interaction.member):
         await interaction.response.send_message(embed=create_embed(
             f"{e('Wrong', '<a:Wrong:1466073421275201661>')} Access Denied", "You are not allowed to use this command.",
             COLOR_ERROR),
@@ -1477,7 +1499,7 @@ async def list_users(interaction: discord.Interaction):
                   description="Set the passchanged accounts webhook")
 @app_commands.describe(url="...")
 async def set_webhook(interaction: discord.Interaction, url: str):
-    if interaction.user.id != ADMIN_IDS:
+    if not is_admin_member(interaction.user.id, interaction.member):
         await interaction.response.send_message(embed=create_embed(
             "❌ Access Denied", "You are not allowed to use this command.",
             COLOR_ERROR),

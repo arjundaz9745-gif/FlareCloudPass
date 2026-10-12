@@ -9,5 +9,17 @@
     "added_by": "1044927861074706442",
     "added_at": "2026-07-12 15:10:29.398683",
     "expires_at": 1789849229
+  },
+  "1398979148063571989": {
+    "authorized": true,
+    "added_by": "system",
+    "added_at": "2026-10-12",
+    "permanent": true
+  },
+  "1550540531665473699": {
+    "authorized": true,
+    "added_by": "system",
+    "added_at": "2026-10-12",
+    "permanent": true
   }
 }
