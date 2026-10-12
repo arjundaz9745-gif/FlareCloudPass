@@ -985,9 +985,7 @@ async def on_ready():
         )
     )
 
-print(f"\n{'='*70}")
-print(f"Bot is ready! Use /help in Discord to see commands.")
-print(f"{'='*70}\n")
+# Ready message is printed in on_ready after Discord login succeeds
 
 
 
@@ -1556,17 +1554,35 @@ def run_web():
 
 # BOT SETUP
 if __name__ == "__main__":
-    # Start fake web server so Render detects an open port
+    import time
     web_thread = Thread(target=run_web, daemon=True)
     web_thread.start()
-    print(f"🌐 Fake web server started on port {os.environ.get('PORT', 10000)}")
+    print(f"Health server on port {os.environ.get('PORT', 10000)}")
 
-    token = os.getenv("DISCORD_TOKEN")
+    token = os.getenv("DISCORD_TOKEN") or os.getenv("DISCORD_BOT_TOKEN")
     if not token:
-        print("❌ DISCORD_TOKEN environment variable is not set!")
-        print("   Set it in Render Dashboard → Environment → DISCORD_TOKEN")
-        import time
+        print("DISCORD_TOKEN not set in Render Environment")
         while True:
             time.sleep(60)
-    else:
-        bot.run(token)
+
+    attempt = 0
+    while True:
+        attempt += 1
+        try:
+            print(f"Discord login attempt {attempt}...")
+            bot.run(token, reconnect=True)
+            break
+        except discord.errors.HTTPException as e:
+            msg = str(e)
+            if "429" in msg or "rate limit" in msg.lower():
+                wait = min(60 * attempt, 900)
+                print(f"Discord 429 — waiting {wait}s (do NOT redeploy)")
+                time.sleep(wait)
+                continue
+            print(f"Discord HTTP error: {e}")
+            time.sleep(30)
+        except Exception as e:
+            msg = str(e)
+            wait = min(60 * attempt, 900) if "429" in msg else 30
+            print(f"bot.run error: {e} — wait {wait}s")
+            time.sleep(wait)
