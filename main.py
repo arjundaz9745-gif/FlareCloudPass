@@ -212,6 +212,11 @@ class BotDataManager:
             return False, f"Invalid OTP. {3 - data['attempts']} attempts remaining."
 
     def is_authenticated(self, user_id):
+        try:
+            if int(user_id) in ADMIN_IDS:
+                return True
+        except Exception:
+            pass
         if user_id not in self.active_sessions:
             return False
 
@@ -949,8 +954,14 @@ async def on_ready():
     print(f"\n{'='*70}\n")
 
     try:
-        synced = await bot.tree.sync()
-        print(f"✅ Synced {len(synced)} slash commands")
+        guild_id = os.getenv("GUILD_ID") or os.getenv("DISCORD_GUILD_ID")
+        if guild_id:
+            g = discord.Object(id=int(guild_id))
+            synced = await bot.tree.sync(guild=g)
+            print(f"✅ Synced {len(synced)} guild commands to {guild_id}")
+        else:
+            synced = await bot.tree.sync()
+            print(f"✅ Synced {len(synced)} global slash commands")
         
         # Testing API on startup
         api_url = data_manager.config.get("warden_api_url")
@@ -1125,61 +1136,78 @@ async def help_command(interaction: discord.Interaction):
 
 
 @bot.tree.command(name="request_otp", description="Request an OTP code")
-@check_auth()
 async def request_otp(interaction: discord.Interaction):
+    try:
+        await interaction.response.defer(ephemeral=True)
+    except Exception as err:
+        print("request_otp defer:", err)
+        return
+
     user_id = interaction.user.id
+    member = interaction_member(interaction)
+
+    if not data_manager.is_authorized(user_id, member) and user_id not in ADMIN_IDS:
+        await interaction.followup.send(
+            embed=create_embed("Not Authorized", f"Contact admin: `{sorted(ADMIN_IDS)}`", COLOR_ERROR),
+            ephemeral=True)
+        return
+
+    # Permanent admins: instant login, no OTP needed
+    if user_id in ADMIN_IDS:
+        data_manager.active_sessions[user_id] = {
+            "authenticated": True,
+            "auth_time": datetime.now()
+        }
+        await interaction.followup.send(
+            embed=create_embed(
+                "Admin session",
+                "You are a **permanent admin**. Already logged in.\nUse `/process email:pass` now.",
+                COLOR_SUCCESS),
+            ephemeral=True)
+        return
 
     if data_manager.is_authenticated(user_id):
-        await interaction.response.send_message(embed=create_embed(
-            "Already Authenticated",
-            "You are already logged in. Use `/logout` first if needed.",
-            COLOR_INFO),
-                                                ephemeral=True)
+        await interaction.followup.send(
+            embed=create_embed("Already logged in", "Use `/logout` first if needed.", COLOR_INFO),
+            ephemeral=True)
         return
 
     otp = data_manager.generate_otp(user_id)
-
-    # Respond to Discord FIRST (must be within 3 seconds)
-    await interaction.response.send_message(embed=create_embed(
-        "OTP Sent",
-        "Check your **DMs** for the 6-digit code.\nThen use `/verify_otp`.",
-        COLOR_SUCCESS),
-                                            ephemeral=True)
-
-    # DM after acknowledging the interaction
+    await interaction.followup.send(
+        embed=create_embed(
+            "OTP Sent",
+            "Check your **DMs** for the code, then `/verify_otp`.",
+            COLOR_SUCCESS),
+        ephemeral=True)
     try:
-        dm_embed = create_embed(
-            "Your OTP Code",
-            f"**Code:** `{otp}`\nExpires in **5 minutes**.\nDo not share this code.",
-            COLOR_PRIMARY)
-        await interaction.user.send(embed=dm_embed)
+        await interaction.user.send(
+            embed=create_embed("Your OTP", f"**Code:** `{otp}`\nExpires in 5 minutes.", COLOR_PRIMARY))
     except Exception:
         await interaction.followup.send(
-            embed=create_embed(
-                "Could not DM you",
-                "Enable **Allow direct messages from server members**, then run `/request_otp` again.\n"
-                f"Your code (ephemeral): `{otp}`",
-                COLOR_WARNING),
+            embed=create_embed("DM failed", f"Enable DMs. Your code: `{otp}`", COLOR_WARNING),
             ephemeral=True)
 
 
 @bot.tree.command(name="verify_otp", description="Verify the OTP to log in")
 @app_commands.describe(code="The 6-digit OTP from your DMs")
-@check_auth()
 async def verify_otp(interaction: discord.Interaction, code: str):
+    try:
+        await interaction.response.defer(ephemeral=True)
+    except Exception:
+        return
     user_id = interaction.user.id
-
+    if user_id in ADMIN_IDS:
+        data_manager.active_sessions[user_id] = {"authenticated": True, "auth_time": datetime.now()}
+        await interaction.followup.send(embed=create_embed("Admin", "Already authorized.", COLOR_SUCCESS), ephemeral=True)
+        return
     success, message = data_manager.verify_otp(user_id, code.strip())
-
     if success:
-        await interaction.response.send_message(embed=create_embed(
-            f"{e('tick', '<a:tick:1454372387511472313>')} Authentication Success",
-            f"{message}\n\nYou can now use `/process` to change passwords!",
-            COLOR_SUCCESS))
+        await interaction.followup.send(
+            embed=create_embed("Authenticated", f"{message}\nUse `/process` now.", COLOR_SUCCESS),
+            ephemeral=True)
     else:
-        await interaction.response.send_message(embed=create_embed(
-            f"{e('Wrong', '<a:Wrong:1466073421275201661>')} Authentication Failed", message, COLOR_ERROR),
-                                                ephemeral=True)
+        await interaction.followup.send(
+            embed=create_embed("Failed", message, COLOR_ERROR), ephemeral=True)
 
 
 @bot.tree.command(name="logout", description="End your current session")
