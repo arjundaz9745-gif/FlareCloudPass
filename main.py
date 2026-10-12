@@ -42,6 +42,21 @@ ADMIN_IDS = {
 }
 AUTHORIZED_ROLE_ID = 1554091677453652028  # admin/owner role
 
+def interaction_member(interaction):
+    """discord.py has no interaction.member — resolve Member safely."""
+    try:
+        import discord
+        if isinstance(interaction.user, discord.Member):
+            return interaction.user
+        if interaction.guild is not None:
+            m = interaction.guild.get_member(interaction.user.id)
+            if m:
+                return m
+    except Exception:
+        pass
+    return None
+
+
 def is_admin_member(user_id, member=None):
     """Permanent admin IDs or owner/admin role."""
     try:
@@ -51,11 +66,16 @@ def is_admin_member(user_id, member=None):
         pass
     if member is not None:
         try:
-            if AUTHORIZED_ROLE_ID in [r.id for r in getattr(member, "roles", [])]:
+            roles = getattr(member, "roles", None) or []
+            if AUTHORIZED_ROLE_ID in [r.id for r in roles]:
                 return True
         except Exception:
             pass
     return False
+
+
+def is_admin_interaction(interaction):
+    return is_admin_member(interaction.user.id, interaction_member(interaction))
 
 
 CONFIG_FILE = "config.json"
@@ -976,7 +996,7 @@ def check_auth():
 
     async def predicate(interaction: discord.Interaction) -> bool:
         try:
-            member = interaction.member or interaction.user
+            member = interaction_member(interaction) or interaction.user
             if not data_manager.is_authorized(interaction.user.id, member):
                 if not interaction.response.is_done():
                     await interaction.response.send_message(
@@ -1056,7 +1076,7 @@ async def on_app_command_error(interaction: discord.Interaction,
 @bot.tree.command(name="help",
                   description="View all commands and how to use the bot")
 async def help_command(interaction: discord.Interaction):
-    if not data_manager.is_authorized(interaction.user.id, interaction.member or interaction.user):
+    if not data_manager.is_authorized(interaction.user.id, interaction_member(interaction) or interaction.user):
         await interaction.response.send_message(embed=create_embed(
             f"{e('Wrong', '<a:Wrong:1466073421275201661>')} Not Authorized", f"Contact admin (ID: `{ADMIN_IDS}`).",
             COLOR_ERROR),
@@ -1082,7 +1102,7 @@ async def help_command(interaction: discord.Interaction):
                "`/stop` - Stop current process"),
         inline=False)
 
-    if is_admin_member(interaction.user.id, interaction.member):
+    if is_admin_interaction(interaction):
         embed.add_field(name=f"{e('Admin', '<:Admin:1469724795137425551>')} Admin Commands",
                         value=("`/panel` - Admin Control panel\n"
                                "`/auth @user <duration>` - Grant access\n"
@@ -1404,7 +1424,7 @@ async def process_bulk(interaction: discord.Interaction,
 
 @bot.tree.command(name="panel", description="Admin Control Panel")
 async def admin_panel(interaction: discord.Interaction):
-    if not is_admin_member(interaction.user.id, interaction.member):
+    if not is_admin_interaction(interaction):
         await interaction.response.send_message(embed=create_embed(
             f"{e('Wrong', '<a:Wrong:1466073421275201661>')} Access Denied", "You are not allowed to use this command.",
             COLOR_ERROR),
@@ -1435,7 +1455,7 @@ async def admin_panel(interaction: discord.Interaction):
 async def authorize_user(interaction: discord.Interaction,
                          user: discord.Member,
                          duration: Optional[int] = None):
-    if not is_admin_member(interaction.user.id, interaction.member):
+    if not is_admin_interaction(interaction):
         await interaction.response.send_message(embed=create_embed(
             f"{e('Wrong', '<a:Wrong:1466073421275201661>')} Access Denied", "You are not allowed to use this command.",
             COLOR_ERROR),
@@ -1460,7 +1480,7 @@ async def authorize_user(interaction: discord.Interaction,
                   description="Disallows a user from using passchanger")
 @app_commands.describe(user="...")
 async def revoke_user(interaction: discord.Interaction, user: discord.Member):
-    if not is_admin_member(interaction.user.id, interaction.member):
+    if not is_admin_interaction(interaction):
         await interaction.response.send_message(embed=create_embed(
             f"{e('Wrong', '<a:Wrong:1466073421275201661>')} Access Denied", "You are not allowed to use this command.",
             COLOR_ERROR),
@@ -1474,7 +1494,7 @@ async def revoke_user(interaction: discord.Interaction, user: discord.Member):
 
 @bot.tree.command(name="list_authed", description="List all authorized users")
 async def list_users(interaction: discord.Interaction):
-    if not is_admin_member(interaction.user.id, interaction.member):
+    if not is_admin_interaction(interaction):
         await interaction.response.send_message(embed=create_embed(
             f"{e('Wrong', '<a:Wrong:1466073421275201661>')} Access Denied", "You are not allowed to use this command.",
             COLOR_ERROR),
@@ -1499,7 +1519,7 @@ async def list_users(interaction: discord.Interaction):
                   description="Set the passchanged accounts webhook")
 @app_commands.describe(url="...")
 async def set_webhook(interaction: discord.Interaction, url: str):
-    if not is_admin_member(interaction.user.id, interaction.member):
+    if not is_admin_interaction(interaction):
         await interaction.response.send_message(embed=create_embed(
             "❌ Access Denied", "You are not allowed to use this command.",
             COLOR_ERROR),
