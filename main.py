@@ -1638,32 +1638,74 @@ def run_web():
 # BOT SETUP
 if __name__ == "__main__":
     import time
+    import urllib.request
+    import json as _json
+
     web_thread = Thread(target=run_web, daemon=True)
     web_thread.start()
     print(f"Health server on port {os.environ.get('PORT', 10000)}")
 
-    token = os.getenv("DISCORD_TOKEN") or os.getenv("DISCORD_BOT_TOKEN")
+    token = (os.getenv("DISCORD_TOKEN") or os.getenv("DISCORD_BOT_TOKEN") or "").strip()
+    # strip accidental quotes from Render env
+    if len(token) >= 2 and token[0] == token[-1] and token[0] in ("'", '"'):
+        token = token[1:-1].strip()
+        print("Stripped quotes from DISCORD_TOKEN")
+
     if not token:
-        print("DISCORD_TOKEN not set in Render Environment")
+        print("FATAL: DISCORD_TOKEN is empty. Set it in Render → Environment.")
         while True:
             time.sleep(60)
+
+    print(f"Token length={len(token)} starts={token[:6]!r} ends={token[-4]!r}")
+
+    def check_token(tok: str, timeout=20):
+        """Hit Discord REST before gateway so we don't hang forever."""
+        req = urllib.request.Request(
+            "https://discord.com/api/v10/users/@me",
+            headers={"Authorization": f"Bot {tok}", "User-Agent": "FlareCloudPass (Render)"},
+            method="GET",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                body = _json.loads(resp.read().decode())
+                return True, f"OK user={body.get('username')}#{body.get('discriminator')} id={body.get('id')}"
+        except Exception as e:
+            code = getattr(getattr(e, "code", None), "__str__", lambda: None)()
+            if hasattr(e, "code"):
+                return False, f"HTTP {e.code}: {e}"
+            return False, str(e)
+
+    ok, info = check_token(token)
+    print(f"Token pre-check: {info}")
+    if not ok:
+        print("TOKEN CHECK FAILED — fix DISCORD_TOKEN then redeploy.")
+        print("If HTTP 401: reset token in Discord Developer Portal.")
+        print("If HTTP 429: wait longer; Discord is still rate-limiting this token/IP.")
+        # keep health server up so Render stays green; retry check every 2 min
+        while True:
+            time.sleep(120)
+            ok, info = check_token(token)
+            print(f"Token re-check: {info}")
+            if ok:
+                print("Token OK — starting gateway login...")
+                break
 
     attempt = 0
     while True:
         attempt += 1
         try:
-            print(f"Discord login attempt {attempt}...")
-            bot.run(token, reconnect=True)
+            print(f"Discord gateway login attempt {attempt}...")
+            bot.run(token, reconnect=True, log_handler=None)
             break
+        except discord.errors.LoginFailure as e:
+            print(f"LoginFailure (bad token): {e}")
+            print("Reset token in Discord Developer Portal → update DISCORD_TOKEN → redeploy once.")
+            time.sleep(120)
         except discord.errors.HTTPException as e:
             msg = str(e)
-            if "429" in msg or "rate limit" in msg.lower():
-                wait = min(60 * attempt, 900)
-                print(f"Discord 429 — waiting {wait}s (do NOT redeploy)")
-                time.sleep(wait)
-                continue
-            print(f"Discord HTTP error: {e}")
-            time.sleep(30)
+            wait = min(60 * attempt, 900)
+            print(f"HTTPException: {e} — wait {wait}s")
+            time.sleep(wait)
         except Exception as e:
             msg = str(e)
             wait = min(60 * attempt, 900) if "429" in msg else 30
