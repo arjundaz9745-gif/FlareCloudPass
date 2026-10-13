@@ -31,8 +31,11 @@ def scrape_account_info(email: str, password: str) -> dict:
 
         try:
 
-            password_input = WebDriverWait(driver, 3).until(
-                EC.presence_of_element_located((By.NAME, "passwd"))
+            password_input = WebDriverWait(driver, 5).until(
+                EC.presence_of_element_located((
+                    By.CSS_SELECTOR,
+                    '#passwordEntry, input[name="passwd"], input[type="password"]'
+                ))
             )
             print("✅ Password input appeared directly.")
 
@@ -47,7 +50,7 @@ def scrape_account_info(email: str, password: str) -> dict:
                 use_password_btn.click()
                 print("➡️ Clicked 'Use your password'")
                 password_input = WebDriverWait(driver, 5).until(
-                    EC.presence_of_element_located((By.NAME, "passwd"))
+                    EC.presence_of_element_located((By.CSS_SELECTOR, '#passwordEntry, input[name="passwd"], input[type="password"]'))
                 )
 
             except TimeoutException:
@@ -67,7 +70,7 @@ def scrape_account_info(email: str, password: str) -> dict:
                     use_password_btn.click()
                     print("➡️ Clicked 'Use your password' after 'Other ways'")
                     password_input = WebDriverWait(driver, 5).until(
-                        EC.presence_of_element_located((By.NAME, "passwd"))
+                        EC.presence_of_element_located((By.CSS_SELECTOR, '#passwordEntry, input[name="passwd"], input[type="password"]'))
                     )
 
                 except TimeoutException:
@@ -86,7 +89,7 @@ def scrape_account_info(email: str, password: str) -> dict:
                         use_password_btn.click()
                         print("➡️ Clicked 'Use your password' after legacy switch")
                         password_input = WebDriverWait(driver, 5).until(
-                            EC.presence_of_element_located((By.NAME, "passwd"))
+                            EC.presence_of_element_located((By.CSS_SELECTOR, '#passwordEntry, input[name="passwd"], input[type="password"]'))
                         )
 
                     except TimeoutException:
@@ -94,21 +97,91 @@ def scrape_account_info(email: str, password: str) -> dict:
                         return {"email": email, "error": "Could not reach password input"}
 
 
-        password_input.send_keys(clean_text(password))
-        password_input.send_keys(Keys.RETURN)
-        time.sleep(2)
-
-
+        # Prefer clearing and typing into whatever password field we found
         try:
-            password_input = driver.find_element(By.ID, "passwordEntry")
+            password_input.clear()
+        except Exception:
+            pass
+        pwd = clean_text(password)
+        password_input.send_keys(pwd)
+        time.sleep(0.4)
+        # Click Next / submit if present, else Enter
+        submitted = False
+        for sel in [
+            (By.CSS_SELECTOR, 'button[type="submit"]'),
+            (By.CSS_SELECTOR, 'button[data-testid="primaryButton"]'),
+            (By.ID, "idSIButton9"),
+            (By.XPATH, "//button[contains(., 'Next') or contains(., 'Sign in')]"),
+        ]:
+            try:
+                btn = WebDriverWait(driver, 2).until(EC.element_to_be_clickable(sel))
+                btn.click()
+                submitted = True
+                print("✅ Clicked submit/Next after password")
+                break
+            except Exception:
+                continue
+        if not submitted:
+            password_input.send_keys(Keys.RETURN)
+            print("✅ Submitted password with Enter")
+        time.sleep(3)
 
-            if password_input.is_displayed():
-                print("❌ Password input still present — likely incorrect password.")
+        def page_text():
+            try:
+                return (driver.page_source or "") + " " + (driver.title or "")
+            except Exception:
+                return ""
+
+        def has_bad_password(src: str) -> bool:
+            src_l = src.lower()
+            needles = [
+                "your account or password is incorrect",
+                "that password is incorrect",
+                "password is incorrect",
+                "incorrect password",
+                "account or password is incorrect",
+                "we don't recognize this password",
+                "enter a different password",
+                "sign-in name or password is incorrect",
+            ]
+            return any(n in src_l for n in needles)
+
+        # Wait a bit for redirect / error
+        for _ in range(8):
+            src = page_text()
+            if has_bad_password(src):
+                print("❌ Microsoft reported incorrect password.")
                 return {"email": email, "error": "Incorrect password"}
+            url = (driver.current_url or "").lower()
+            # left the password page successfully
+            if any(x in url for x in (
+                "account.microsoft.com", "account.live.com", "account.xbox.com",
+                "privacynotice", "kmsi", "ppsecure", "login.live.com/oauth20"
+            )):
+                break
+            # password field gone = usually progress
+            try:
+                still = driver.find_elements(By.CSS_SELECTOR, '#passwordEntry, input[name="passwd"], input[type="password"]')
+                visible_pw = [e for e in still if e.is_displayed()]
+            except Exception:
+                visible_pw = []
+            if not visible_pw:
+                break
+            time.sleep(1)
+        else:
+            src = page_text()
+            if has_bad_password(src):
+                return {"email": email, "error": "Incorrect password"}
+            # last resort: still on password field with no error text → soft fail with detail
+            try:
+                still = driver.find_elements(By.CSS_SELECTOR, '#passwordEntry, input[name="passwd"]')
+                if any(e.is_displayed() for e in still) and "login.live.com" in (driver.current_url or "").lower():
+                    print("❌ Still on login password page — treating as incorrect password.")
+                    return {"email": email, "error": "Incorrect password"}
+            except Exception:
+                pass
 
-        except:
-            print("✅ Login successful. No password error detected.")
-
+        print("✅ Password step passed (no Microsoft error text).")
 
         try:
             if "Too Many Requests" in driver.page_source:
@@ -122,21 +195,21 @@ def scrape_account_info(email: str, password: str) -> dict:
                 if "Too Many Requests" in driver.page_source:
                     print("🚫 Still blocked after multiple retries. Skipping account.")
                     return {"email": email, "error": "Too Many Requests even after retry"}
-        except:
+        except Exception:
             print("✅ No rate limit detected. Proceeding normally.")
 
-
+        # Security info / proof prompts — never treat missing as bad password
         try:
-            security_next_btn = WebDriverWait(driver, 5).until(
+            security_next_btn = WebDriverWait(driver, 4).until(
                 EC.element_to_be_clickable((By.ID, "iLandingViewAction"))
             )
             print("🔒 Security info change screen found. Clicking 'Next'...")
             security_next_btn.click()
             time.sleep(2)
-        except:
+        except Exception:
             print("✅ No security prompt detected. Continuing...")
 
-
+        # Stay signed in? — optional; missing is OK
         try:
             stay_signed_in_yes = WebDriverWait(driver, 5).until(
                 EC.element_to_be_clickable((By.CSS_SELECTOR, 'button[data-testid="primaryButton"]'))
@@ -144,9 +217,8 @@ def scrape_account_info(email: str, password: str) -> dict:
             print("🔄 'Stay signed in?' prompt detected. Confirming...")
             stay_signed_in_yes.click()
             time.sleep(2)
-        except:
-            print("❌ Password input still present — likely incorrect password.")
-            return {"email": email, "error": "Incorrect password"}
+        except Exception:
+            print("✅ No 'Stay signed in' prompt (OK). Continuing...")
 
 
         try:

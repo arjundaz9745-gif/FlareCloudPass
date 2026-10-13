@@ -144,12 +144,16 @@ def continue_acsr_flow(driver, account_info, token, captcha_text):
         time.sleep(1)
 
         print("🔐 Entering old password...")
-        previous_pass_input = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, 'input[data-nuid="PreviousPasswordInput"]'))
+        previous_pass_input = WebDriverWait(driver, 15).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, 'input[data-nuid="PreviousPasswordInput"], input[type="password"]'))
         )
-        previous_pass_input.clear()
+        try:
+            previous_pass_input.clear()
+        except Exception:
+            pass
         previous_pass_input.send_keys(clean_text(account_info["password"]))
         print("✅ Old password entered.")
+
         time.sleep(2)
 
 
